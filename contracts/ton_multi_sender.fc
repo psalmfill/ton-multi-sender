@@ -10,6 +10,8 @@ const int ton_for_fee = 100000000;
 ;; since addresses in TON depend on the initial state of the contract
 global int ctx_id;
 global int ctx_counter;
+global slice owner;
+global int send_excesses_to_sender;
 
 ;; load_data populates storage variables using stored data
 () load_data() impure {
@@ -17,6 +19,8 @@ global int ctx_counter;
 
     ctx_id = ds~load_uint(256);
     ctx_counter = ds~load_uint(256);
+    owner = ds~load_msg_addr();
+    send_excesses_to_sender = ds~load_uint(8);
 
     ds.end_parse();
 }
@@ -27,6 +31,8 @@ global int ctx_counter;
         begin_cell()
             .store_uint(ctx_id, 256)
             .store_uint(ctx_counter, 256)
+            .store_slice(owner)
+            .store_uint(ctx_counter, 8)
             .end_cell()
     );
 }
@@ -73,12 +79,14 @@ global int ctx_counter;
 
     load_data();
 
-    ;; Extract the total amount of coins from the message
-    int total_coins = in_msg_body~load_coins();
-
-    ;; Extract the transaction list
-    cell transfer_list = in_msg_body~load_ref();
     if(op == 1){
+
+        ;; Extract the total amount of coins from the message
+        int total_coins = in_msg_body~load_coins();
+
+        ;; Extract the transaction list
+        cell transfer_list = in_msg_body~load_ref();
+
         do {
             var (item_index, item, f?) = transfer_list~udict::delete_get_min(64);
 
@@ -100,10 +108,49 @@ global int ctx_counter;
 
 
         if(total_coins > 0) {
-            ;; return excesses to the sender
-            send_excesses(sender);
+            ;; return excesses to the owner address
+            slice receiver = owner;
+            if(send_excesses_to_sender == 1){
+                receiver = sender;
+            }
+            send_excesses(receiver);
         }
         save_data();
+        return ();
+    }
+    throw_unless(401, equal_slices_bits(sender, owner));
+
+    if(op == 2){;; change owner
+
+        slice new_owner = in_msg_body~load_msg_addr();
+
+        owner = new_owner;
+
+        save_data();
+     
+        return ();
+    }
+
+    if(op == 3){;; change send_excesses_to_sender
+
+        send_excesses_to_sender = in_msg_body~load_uint(8);
+
+        save_data();
+     
+        return ();
+    }
+
+    if(op == 4){;; reset counter
+
+        int value = in_msg_body~load_uint(8);
+
+        if(value == 1){
+            ctx_counter = 0;
+            ctx_id = 0;
+        }
+
+        save_data();
+     
         return ();
     }
 
@@ -135,4 +182,14 @@ int get_counter() method_id {
 int get_id() method_id {
     load_data();
     return ctx_id;
+}
+
+int get_send_excesses_to_sender() method_id {
+    load_data();
+    return send_excesses_to_sender;
+}
+
+slice get_owner() method_id {
+    load_data();
+    return owner;
 }

@@ -17,18 +17,20 @@ describe('TonMultiSender', () => {
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
+        deployer = await blockchain.treasury('deployer');
 
         tonMultiSender = blockchain.openContract(
             TonMultiSender.createFromConfig(
                 {
                     id: 0,
                     counter: 0,
+                    owner: deployer.address,
+                    sendExcessesToSender: 1
                 },
                 code
             )
         );
 
-        deployer = await blockchain.treasury('deployer');
 
         const deployResult = await tonMultiSender.sendDeploy(deployer.getSender(), toNano('0.05'));
 
@@ -201,5 +203,64 @@ describe('TonMultiSender', () => {
         expect(deployerBalanceAfterTon).toBe(deployerBalanceBeforeTon - (totalAmount/BigInt(1000000000)));
     });
 
-    
+    it('should update owner address', async () => {
+        // Send a message to update the minting price
+        const updateOwnerResult = await tonMultiSender.sendChangeOwner(deployer.getSender(), {
+            value: toNano('0.01'),
+            queryId: Date.now(),
+            newOwnerAddress: deployer.address,
+        });
+
+        // Ensure transaction is successful
+        expect(updateOwnerResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: tonMultiSender.address,
+            success: true,
+        });
+
+        // Verify collection data has been updated
+        const owner = await tonMultiSender.getOwner();
+        expect(owner.toString()).toBe(deployer.address.toString());
+    });
+
+    it('should update send_excesses_to_sender', async () => {
+        // Send a message to update the minting price
+        const updateOwnerResult = await tonMultiSender.sendChangeSendExcessesToSender(deployer.getSender(), {
+            value: toNano('0.01'),
+            queryId: Date.now(),
+            newValue: 0,
+        });
+
+        // Ensure transaction is successful
+        expect(updateOwnerResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: tonMultiSender.address,
+            success: true,
+        });
+
+        // Verify collection data has been updated
+        const value = await tonMultiSender.getSendExcessesToSender();
+        expect(value).toBe(0);
+    });
+    it('should update reset counter', async () => {
+        // Send a message to update the minting price
+        const updateOwnerResult = await tonMultiSender.sendResetCounter(deployer.getSender(), {
+            value: toNano('0.01'),
+            queryId: Date.now(),
+            newValue: 1,
+        });
+
+        // Ensure transaction is successful
+        expect(updateOwnerResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: tonMultiSender.address,
+            success: true,
+        });
+
+        // Verify collection data has been updated
+        const counter = await tonMultiSender.getCounter();
+        const id = await tonMultiSender.getID();
+        expect(counter).toBe(0);
+        expect(id).toBe(0);
+    });
 });
